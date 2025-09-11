@@ -233,4 +233,90 @@ public class AccountService {
     /**
      * Freeze/Unfreeze account
      */
-    public boolean updateFreezeStatus
+    public boolean updateFreezeStatus(String accountNumber, boolean isFreeze) {
+        String cleanAccountNumber = AccountUtil.unformatAccountNumber(accountNumber);
+
+        // Validate account exists
+        Optional<Account> accountOpt = accountRepository.findAccountByAccountNo(cleanAccountNumber);
+        if (accountOpt.isEmpty()) {
+            System.out.println("❌ Account not found!");
+            return false;
+        }
+
+        Account account = accountOpt.get();
+        if (account.isDeleted()) {
+            System.out.println("❌ Cannot modify deleted account!");
+            return false;
+        }
+
+        boolean success = accountRepository.updateFreezeStatus(cleanAccountNumber, isFreeze);
+        if (success) {
+            String action = isFreeze ? "frozen" : "unfrozen";
+            System.out.println("✅ Account " + AccountUtil.formatAccountNumber(cleanAccountNumber) + " has been " + action + "!");
+            return true;
+        } else {
+            System.out.println("❌ Failed to update account freeze status!");
+            return false;
+        }
+    }
+
+    /**
+     * Validate currency
+     */
+    public boolean isValidCurrency(String currency) {
+        return "USD".equalsIgnoreCase(currency) || "KHR".equalsIgnoreCase(currency);
+    }
+
+    /**
+     * Get all account types
+     */
+    public List<AccountType> getAllAccountTypes() {
+        return accountRepository.findAllAccountTypes();
+    }
+
+    /**
+     * Get account type by ID
+     */
+    public Optional<AccountType> getAccountTypeById(Integer id) {
+        return accountRepository.findAccountTypeById(id);
+    }
+
+    /**
+     * Get account summary for customer
+     */
+    public String getAccountsSummary(Integer customerId) {
+        List<Account> accounts = getCustomerAccounts(customerId);
+
+        if (accounts.isEmpty()) {
+            return "No accounts found.";
+        }
+
+        StringBuilder summary = new StringBuilder();
+        summary.append("Account Summary:\n");
+        summary.append("=".repeat(50)).append("\n");
+
+        for (Account account : accounts) {
+            summary.append(account.getFullAccountInfo()).append("\n");
+            summary.append("-".repeat(30)).append("\n");
+        }
+
+        return summary.toString();
+    }
+
+    /**
+     * Check if customer has any accounts
+     */
+    public boolean customerHasAccounts(Integer customerId) {
+        return !getCustomerAccounts(customerId).isEmpty();
+    }
+
+    /**
+     * Get customer's active accounts only
+     */
+    public List<Account> getActiveAccounts(Integer customerId) {
+        List<Account> allAccounts = getCustomerAccounts(customerId);
+        return allAccounts.stream()
+                .filter(Account::isActive)
+                .toList();
+    }
+}

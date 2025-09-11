@@ -11,11 +11,13 @@ import java.util.Optional;
 public class CustomerController {
     private final CustomerService customerService;
     private final CustomerView customerView;
+    private final AccountController accountController; // Add AccountController
     private Customer currentCustomer;
 
     public CustomerController() {
         this.customerService = new CustomerService();
         this.customerView = new CustomerView();
+        this.accountController = new AccountController(); // Initialize AccountController
         this.currentCustomer = null;
     }
 
@@ -155,53 +157,102 @@ public class CustomerController {
         }
     }
 
-    // ========== MENU HANDLERS (Placeholders for future phases) ==========
+    // ========== MENU HANDLERS ==========
 
+    /**
+     * Handle account management - NOW FULLY IMPLEMENTED!
+     */
     private void handleAccountManagement() {
-        customerView.showInfoMessage("Account Management - Coming in Phase 3!");
-        customerView.showInfoMessage("Here you will be able to:");
-        customerView.showInfoMessage("• View your accounts");
-        customerView.showInfoMessage("• Create new accounts");
-        customerView.showInfoMessage("• Manage account settings");
-        customerView.waitForEnter();
+        try {
+            // Pass control to AccountController
+            accountController.handleAccountManagement(currentCustomer);
+
+        } catch (Exception e) {
+            customerView.showErrorMessage("Error in account management: " + e.getMessage());
+            customerView.waitForEnter();
+        }
     }
 
+    /**
+     * Handle make transaction (placeholder for Phase 4)
+     */
     private void handleMakeTransaction() {
         customerView.showInfoMessage("Make Transaction - Coming in Phase 4!");
         customerView.showInfoMessage("Here you will be able to:");
         customerView.showInfoMessage("• Transfer money between accounts");
         customerView.showInfoMessage("• Send money to other accounts");
         customerView.showInfoMessage("• Deposit and withdraw funds");
+
+        // Show if customer has accounts
+        if (accountController.customerHasAccounts(currentCustomer.getId())) {
+            customerView.showInfoMessage("✅ You have accounts ready for transactions!");
+        } else {
+            customerView.showInfoMessage("💡 Create an account first in Account Management!");
+        }
         customerView.waitForEnter();
     }
 
+    /**
+     * Handle pay bills (placeholder for Phase 5)
+     */
     private void handlePayBills() {
         customerView.showInfoMessage("Pay Bills - Coming in Phase 5!");
         customerView.showInfoMessage("Here you will be able to:");
         customerView.showInfoMessage("• Pay utility bills");
         customerView.showInfoMessage("• Pay subscriptions");
         customerView.showInfoMessage("• Schedule recurring payments");
+
+        // Show if customer has accounts
+        if (accountController.customerHasAccounts(currentCustomer.getId())) {
+            customerView.showInfoMessage("✅ You have accounts ready for bill payments!");
+        } else {
+            customerView.showInfoMessage("💡 Create an account first in Account Management!");
+        }
         customerView.waitForEnter();
     }
 
+    /**
+     * Handle transaction history (placeholder for Phase 4)
+     */
     private void handleTransactionHistory() {
         customerView.showInfoMessage("Transaction History - Coming in Phase 4!");
         customerView.showInfoMessage("Here you will be able to:");
         customerView.showInfoMessage("• View all your transactions");
         customerView.showInfoMessage("• Filter by date and type");
         customerView.showInfoMessage("• Export transaction reports");
+
+        // Show if customer has accounts
+        if (accountController.customerHasAccounts(currentCustomer.getId())) {
+            customerView.showInfoMessage("✅ You have accounts ready for history viewing!");
+        } else {
+            customerView.showInfoMessage("💡 Create an account first in Account Management!");
+        }
         customerView.waitForEnter();
     }
 
+    /**
+     * Handle account freeze (placeholder for Phase 4)
+     */
     private void handleAccountFreeze() {
         customerView.showInfoMessage("Account Freeze - Coming in Phase 4!");
         customerView.showInfoMessage("Here you will be able to:");
         customerView.showInfoMessage("• Request to freeze your accounts");
         customerView.showInfoMessage("• View freeze requests status");
         customerView.showInfoMessage("• Emergency account protection");
+
+        // Show current account status
+        if (accountController.customerHasAccounts(currentCustomer.getId())) {
+            customerView.showInfoMessage("✅ You have accounts that can be frozen!");
+            customerView.showInfoMessage("💡 For now, use Account Management → Freeze/Unfreeze Account");
+        } else {
+            customerView.showInfoMessage("💡 Create an account first in Account Management!");
+        }
         customerView.waitForEnter();
     }
 
+    /**
+     * Handle loan application (placeholder for Phase 6)
+     */
     private void handleLoanApplication() {
         customerView.showInfoMessage("Loan Application - Coming in Phase 6!");
         customerView.showInfoMessage("Here you will be able to:");
@@ -211,6 +262,9 @@ public class CustomerController {
         customerView.waitForEnter();
     }
 
+    /**
+     * Handle manage favorites (placeholder for Phase 5)
+     */
     private void handleManageFavorites() {
         customerView.showInfoMessage("Manage Favorites - Coming in Phase 5!");
         customerView.showInfoMessage("Here you will be able to:");
@@ -220,6 +274,9 @@ public class CustomerController {
         customerView.waitForEnter();
     }
 
+    /**
+     * Handle update profile
+     */
     private void handleUpdateProfile() {
         try {
             customerView.showInfoMessage("Current profile:");
@@ -243,5 +300,12 @@ public class CustomerController {
 
     public void clearCurrentCustomer() {
         this.currentCustomer = null;
+    }
+
+    /**
+     * Get account controller for advanced operations
+     */
+    public AccountController getAccountController() {
+        return accountController;
     }
 }
