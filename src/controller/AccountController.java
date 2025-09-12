@@ -1,4 +1,4 @@
-// controller/AccountController.java
+// controller/AccountController.java - Enhanced with Initial Deposit
 package controller;
 
 import model.entity.Account;
@@ -42,7 +42,7 @@ public class AccountController {
                         handleViewAccounts(customer);
                         break;
                     case 2:
-                        handleCreateAccount(customer);
+                        handleCreateAccountWithInitialDeposit(customer);
                         break;
                     case 3:
                         handleAccountDetails(customer);
@@ -95,9 +95,9 @@ public class AccountController {
     }
 
     /**
-     * Handle create new account
+     * Enhanced handle create new account with initial deposit
      */
-    private void handleCreateAccount(Customer customer) {
+    private void handleCreateAccountWithInitialDeposit(Customer customer) {
         try {
             // Get available account types
             List<String> availableTypes = accountService.getAvailableAccountTypes(customer.getId());
@@ -109,25 +109,28 @@ public class AccountController {
                 return;
             }
 
-            // Get account creation data
-            String[] accountData = accountView.getNewAccountData(availableTypes);
+            // Get account creation data with initial deposit
+            AccountView.AccountCreationData accountData = accountView.getNewAccountData(availableTypes);
             if (accountData == null) {
                 return; // User cancelled or invalid input
             }
 
-            String accountType = accountData[0];
-            String currency = accountData[1];
-
             // Confirm creation
-            if (!accountView.confirmAccountCreation(accountType, currency)) {
+            if (!accountView.confirmAccountCreation(accountData)) {
                 accountView.showInfoMessage("Account creation cancelled.");
                 accountView.waitForEnter();
                 return;
             }
 
-            // Create account
-            accountView.showLoading("Creating your " + accountType + " account");
-            boolean success = accountService.createAccount(customer.getId(), accountType, currency);
+            // Create account with initial deposit
+            accountView.showLoading("Creating your " + accountData.getAccountType() + " account");
+            boolean success = accountService.createAccountWithInitialDeposit(
+                    customer.getId(),
+                    accountData.getAccountType(),
+                    accountData.getCurrency(),
+                    accountData.getInitialDeposit(),
+                    accountData.getMaturityDate()
+            );
 
             if (success) {
                 accountView.showSuccessMessage("Account created successfully!");
@@ -140,6 +143,12 @@ public class AccountController {
                             newAccount.getFormattedAccountNo(),
                             newAccount.getAccountName()
                     );
+
+                    // Show additional info for Fixed accounts
+                    if (newAccount.getMaturityDate() != null) {
+                        System.out.println("🗓️ Maturity Date: " + newAccount.getMaturityDate());
+                        System.out.println("⚠️ No withdrawals allowed until maturity!");
+                    }
                 }
             } else {
                 accountView.showErrorMessage("Failed to create account. Please try again.");
@@ -174,6 +183,21 @@ public class AccountController {
 
             Account selectedAccount = accounts.get(selectedIndex);
             accountView.displayAccountDetails(selectedAccount);
+
+            // Show additional Fixed account info if applicable
+            if (selectedAccount.getMaturityDate() != null) {
+                System.out.println("\n💰 Fixed Account Information:");
+                System.out.println("Maturity Date   : " + selectedAccount.getMaturityDate());
+                System.out.println("Can Withdraw    : " + (selectedAccount.isMatured() ? "✅ Yes" : "❌ No"));
+                if (!selectedAccount.isMatured()) {
+                    System.out.println("Days Until Maturity: " +
+                            java.time.temporal.ChronoUnit.DAYS.between(
+                                    java.time.LocalDate.now(),
+                                    selectedAccount.getMaturityDate()
+                            ) + " days");
+                }
+            }
+
             accountView.waitForEnter();
 
         } catch (Exception e) {
@@ -273,6 +297,11 @@ public class AccountController {
             } else {
                 System.out.println("\n❌ You have reached all account limits.");
             }
+
+            // Show minimum deposit requirements
+            System.out.println("\n💰 Minimum Initial Deposit Requirements:");
+            System.out.println("   • USD Accounts: $5.00");
+            System.out.println("   • KHR Accounts: ៛20,000");
 
             accountView.waitForEnter();
 

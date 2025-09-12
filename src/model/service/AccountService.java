@@ -1,17 +1,22 @@
-// model/service/AccountService.java
+// model/service/AccountService.java - Enhanced with Initial Deposit
 package model.service;
 
 import model.entity.Account;
 import model.entity.AccountType;
 import model.entity.Customer;
+import model.entity.Transaction;
 import model.repository.AccountRepository;
+import model.repository.TransactionRepository;
 import util.AccountUtil;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 
 public class AccountService {
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
     private final CustomerService customerService;
 
     // Account limits
@@ -21,6 +26,7 @@ public class AccountService {
 
     public AccountService() {
         this.accountRepository = new AccountRepository();
+        this.transactionRepository = new TransactionRepository();
         this.customerService = new CustomerService();
     }
 
@@ -32,9 +38,11 @@ public class AccountService {
     }
 
     /**
-     * Create new account for customer
+     * Create new account for customer with initial deposit
      */
-    public boolean createAccount(Integer customerId, String accountType, String currency) {
+    public boolean createAccountWithInitialDeposit(Integer customerId, String accountType,
+                                                   String currency, BigDecimal initialDeposit,
+                                                   LocalDate maturityDate) {
         // Validate customer exists
         Optional<Customer> customerOpt = customerService.findCustomerById(customerId);
         if (customerOpt.isEmpty()) {
@@ -59,9 +67,29 @@ public class AccountService {
             return false;
         }
 
+        // Validate initial deposit amount
+        BigDecimal minimumDeposit = getMinimumInitialDeposit(currency);
+        if (initialDeposit.compareTo(minimumDeposit) < 0) {
+            System.out.println("❌ Initial deposit must be at least " +
+                    AccountUtil.formatCurrency(minimumDeposit, currency) + "!");
+            return false;
+        }
+
         // Check account limits
         if (!canCreateAccount(customerId, accType.getId(), accountType, currency)) {
             return false;
+        }
+
+        // Validate maturity date for Fixed accounts
+        if ("Fixed".equalsIgnoreCase(accountType)) {
+            if (maturityDate == null) {
+                System.out.println("❌ Fixed accounts require a maturity date!");
+                return false;
+            }
+            if (!maturityDate.isAfter(LocalDate.now())) {
+                System.out.println("❌ Maturity date must be in the future!");
+                return false;
+            }
         }
 
         // Generate unique account number
@@ -72,20 +100,86 @@ public class AccountService {
         String accountName = AccountUtil.generateAccountName(
                 customer.getFullName(), accountType, currency);
 
-        // Create account
+        // Create account with initial balance
         Account newAccount = new Account(
-                customerId, accountNumber, accountName, currency, accType.getId());
+                customerId, accountNumber, accountName, currency, accType.getId(), maturityDate);
+        newAccount.setBalance(initialDeposit); // Set initial balance
 
-        boolean success = accountRepository.createAccount(newAccount);
-        if (success) {
-            System.out.println("✅ Account created successfully!");
-            System.out.println("   Account Number: " + AccountUtil.formatAccountNumber(accountNumber));
-            System.out.println("   Account Name: " + accountName);
-            return true;
-        } else {
+        // Create account in database
+        boolean accountCreated = accountRepository.createAccount(newAccount);
+        if (!accountCreated) {
             System.out.println("❌ Failed to create account!");
             return false;
         }
+
+        // Create initial deposit transaction
+        boolean transactionCreated = createInitialDepositTransaction(newAccount, initialDeposit);
+        if (!transactionCreated) {
+            System.out.println("⚠️ Account created but failed to record initial deposit transaction!");
+        }
+
+        System.out.println("✅ Account created successfully!");
+        System.out.println("   Account Number: " + AccountUtil.formatAccountNumber(accountNumber));
+        System.out.println("   Account Name: " + accountName);
+        System.out.println("   Initial Balance: " + AccountUtil.formatCurrency(initialDeposit, currency));
+
+        if (maturityDate != null) {
+            System.out.println("   Maturity Date: " + maturityDate);
+            System.out.println("   ⚠️ No withdrawals allowed until maturity!");
+        }
+
+        return true;
+    }
+
+    /**
+     * Create initial deposit transaction
+     */
+    private boolean createInitialDepositTransaction(Account account, BigDecimal amount) {
+        try {
+            // Get deposit transaction type ID
+            Optional<Integer> depositTypeId = transactionRepository.getTransactionTypeId("Deposit");
+            if (depositTypeId.isEmpty()) {
+                System.err.println("❌ Deposit transaction type not found!");
+                return false;
+            }
+
+            // Create initial deposit transaction using static factory method
+            Transaction initialDeposit = Transaction.createTransaction(
+                    account.getId(),        // sender_id (the account receiving money)
+                    null,                   // receiver_id (null for deposits)
+                    depositTypeId.get(),    // transaction_type_id
+                    amount,                 // amount
+                    "Success",              // status
+                    "Initial deposit for account opening" // remark
+            );
+
+            return transactionRepository.createTransaction(initialDeposit);
+
+        } catch (Exception e) {
+            System.err.println("Error creating initial deposit transaction: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get minimum initial deposit amount
+     */
+    public BigDecimal getMinimumInitialDeposit(String currency) {
+        if ("USD".equalsIgnoreCase(currency)) {
+            return new BigDecimal("5.00"); // $5 minimum
+        } else if ("KHR".equalsIgnoreCase(currency)) {
+            return new BigDecimal("20000"); // ៛20,000 minimum
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
+     * Create new account (backward compatibility - without initial deposit)
+     */
+    @Deprecated
+    public boolean createAccount(Integer customerId, String accountType, String currency) {
+        BigDecimal minimumDeposit = getMinimumInitialDeposit(currency);
+        return createAccountWithInitialDeposit(customerId, accountType, currency, minimumDeposit, null);
     }
 
     /**
@@ -231,6 +325,26 @@ public class AccountService {
     }
 
     /**
+     * Update account balance by ID
+     */
+    public boolean updateAccountBalanceById(Integer accountId, BigDecimal newBalance) {
+        // Validate account exists and is active
+        Optional<Account> accountOpt = accountRepository.findAccountById(accountId);
+        if (accountOpt.isEmpty()) {
+            System.out.println("❌ Account not found!");
+            return false;
+        }
+
+        Account account = accountOpt.get();
+        if (!account.isActive()) {
+            System.out.println("❌ Account is not active!");
+            return false;
+        }
+
+        return accountRepository.updateBalanceById(accountId, newBalance);
+    }
+
+    /**
      * Freeze/Unfreeze account
      */
     public boolean updateFreezeStatus(String accountNumber, boolean isFreeze) {
@@ -258,6 +372,22 @@ public class AccountService {
             System.out.println("❌ Failed to update account freeze status!");
             return false;
         }
+    }
+
+    /**
+     * Check if Fixed account can be withdrawn from (maturity check)
+     */
+    public boolean canWithdrawFromFixedAccount(Account account) {
+        if (account.getMaturityDate() == null) {
+            return true; // Not a fixed account or no maturity restriction
+        }
+
+        boolean isMatured = account.isMatured();
+        if (!isMatured) {
+            System.out.println("❌ Fixed account withdrawals are not allowed until maturity date: " + account.getMaturityDate());
+        }
+
+        return isMatured;
     }
 
     /**
@@ -318,5 +448,19 @@ public class AccountService {
         return allAccounts.stream()
                 .filter(Account::isActive)
                 .toList();
+    }
+
+    /**
+     * Get customer's transactions
+     */
+    public List<Transaction> getCustomerTransactions(Integer customerId) {
+        return transactionRepository.findTransactionsByCustomerId(customerId);
+    }
+
+    /**
+     * Get account transactions
+     */
+    public List<Transaction> getAccountTransactions(Integer accountId) {
+        return transactionRepository.findTransactionsByAccountId(accountId);
     }
 }

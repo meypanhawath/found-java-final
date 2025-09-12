@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Data
 @NoArgsConstructor
@@ -20,6 +21,7 @@ public class Account {
     private boolean isFreeze = false;
     private boolean isDeleted = false;
     private Integer accountTypeId;
+    private LocalDate maturityDate; // New field for Fixed accounts
 
     // Additional fields for display purposes (from joins)
     private String accountTypeName; // From join with account_types
@@ -27,16 +29,23 @@ public class Account {
 
     // Constructor for creating new account
     public Account(Integer customerId, String accountNo, String accountName,
-                   String accountCurrency, Integer accountTypeId) {
+                   String accountCurrency, Integer accountTypeId, LocalDate maturityDate) {
         this.customerId = customerId;
         this.accountNo = accountNo;
         this.accountName = accountName;
         this.accountCurrency = accountCurrency;
         this.accountTypeId = accountTypeId;
+        this.maturityDate = maturityDate;
         this.balance = BigDecimal.ZERO;
         this.overLimit = BigDecimal.ZERO;
         this.isFreeze = false;
         this.isDeleted = false;
+    }
+
+    // Constructor for creating new account (backward compatibility)
+    public Account(Integer customerId, String accountNo, String accountName,
+                   String accountCurrency, Integer accountTypeId) {
+        this(customerId, accountNo, accountName, accountCurrency, accountTypeId, null);
     }
 
     /**
@@ -47,11 +56,24 @@ public class Account {
     }
 
     /**
+     * Check if Fixed account is matured (can withdraw)
+     */
+    public boolean isMatured() {
+        if (maturityDate == null) {
+            return true; // Not a fixed account or no maturity restriction
+        }
+        return !LocalDate.now().isBefore(maturityDate);
+    }
+
+    /**
      * Get account status as string
      */
     public String getStatus() {
         if (isDeleted) return "Deleted";
         if (isFreeze) return "Frozen";
+        if (maturityDate != null && !isMatured()) {
+            return "Active (Fixed - Matures: " + maturityDate + ")";
+        }
         return "Active";
     }
 
@@ -90,8 +112,16 @@ public class Account {
      * Get full account info for listing
      */
     public String getFullAccountInfo() {
-        return String.format("%s - %s\n   Balance: %s\n   Status: %s",
-                accountName, getFormattedAccountNo(), getFormattedBalance(), getStatus());
+        StringBuilder info = new StringBuilder();
+        info.append(String.format("%s - %s\n", accountName, getFormattedAccountNo()));
+        info.append(String.format("   Balance: %s\n", getFormattedBalance()));
+        info.append(String.format("   Status: %s", getStatus()));
+
+        if (maturityDate != null && !isMatured()) {
+            info.append(String.format("\n   ⚠️ Withdrawals restricted until: %s", maturityDate));
+        }
+
+        return info.toString();
     }
 
     /**
@@ -100,5 +130,17 @@ public class Account {
     public String getAccountSummary() {
         return String.format("%s (%s) - %s",
                 accountName, accountCurrency, getFormattedBalance());
+    }
+
+    /**
+     * Get minimum initial deposit for this account type
+     */
+    public BigDecimal getMinimumInitialDeposit() {
+        if ("USD".equalsIgnoreCase(accountCurrency)) {
+            return new BigDecimal("5.00"); // $5 minimum
+        } else if ("KHR".equalsIgnoreCase(accountCurrency)) {
+            return new BigDecimal("20000"); // ៛20,000 minimum
+        }
+        return BigDecimal.ZERO;
     }
 }

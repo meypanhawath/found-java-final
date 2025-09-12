@@ -1,9 +1,13 @@
-// view/AccountView.java
+// view/AccountView.java - Complete Enhanced Version
 package view;
 
 import model.entity.Account;
-import model.entity.AccountType;
+import util.AccountUtil;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -106,9 +110,9 @@ public class AccountView {
     }
 
     /**
-     * Show new account creation menu
+     * Enhanced account creation with initial deposit and maturity date
      */
-    public String[] getNewAccountData(List<String> availableTypes) {
+    public AccountCreationData getNewAccountData(List<String> availableTypes) {
         if (availableTypes.isEmpty()) {
             showInfoMessage("You have reached the maximum limit for all account types!");
             return null;
@@ -136,13 +140,7 @@ public class AccountView {
 
                 if (selectedType.contains("Saving")) {
                     accountType = "Saving";
-                    if (selectedType.contains("USD")) {
-                        currency = "USD";
-                    } else if (selectedType.contains("KHR")) {
-                        currency = "KHR";
-                    } else {
-                        currency = "USD"; // Default
-                    }
+                    currency = selectedType.contains("USD") ? "USD" : "KHR";
                 } else if (selectedType.contains("Checking")) {
                     accountType = "Checking";
                     currency = getCurrencyForNonSavingAccount();
@@ -154,7 +152,22 @@ public class AccountView {
                     return null;
                 }
 
-                return new String[]{accountType, currency};
+                // Get initial deposit
+                BigDecimal initialDeposit = getInitialDeposit(currency);
+                if (initialDeposit == null) {
+                    return null; // User cancelled or invalid amount
+                }
+
+                // Get maturity date for Fixed accounts
+                LocalDate maturityDate = null;
+                if ("Fixed".equals(accountType)) {
+                    maturityDate = getMaturityDate();
+                    if (maturityDate == null) {
+                        return null; // User cancelled
+                    }
+                }
+
+                return new AccountCreationData(accountType, currency, initialDeposit, maturityDate);
             }
         } catch (NumberFormatException e) {
             showErrorMessage("Invalid selection!");
@@ -188,12 +201,154 @@ public class AccountView {
     }
 
     /**
-     * Confirm account creation
+     * Get initial deposit amount with validation
      */
-    public boolean confirmAccountCreation(String accountType, String currency) {
-        System.out.println("\n=== CONFIRM ACCOUNT CREATION ===");
-        System.out.println("Account Type: " + accountType);
-        System.out.println("Currency: " + currency);
+    private BigDecimal getInitialDeposit(String currency) {
+        BigDecimal minimumDeposit = "USD".equals(currency) ?
+                new BigDecimal("5.00") : new BigDecimal("20000");
+
+        String currencySymbol = AccountUtil.getCurrencySymbol(currency);
+        String minimumFormatted = AccountUtil.formatCurrency(minimumDeposit, currency);
+
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("           INITIAL DEPOSIT REQUIRED");
+        System.out.println("=".repeat(50));
+        System.out.println("💰 Minimum initial deposit: " + minimumFormatted);
+        System.out.println("💡 This amount will be your account's starting balance");
+
+        while (true) {
+            System.out.print("Enter initial deposit amount: " + currencySymbol);
+            String input = scanner.nextLine().trim();
+
+            if (input.isEmpty()) {
+                showErrorMessage("Amount cannot be empty!");
+                continue;
+            }
+
+            try {
+                BigDecimal amount = new BigDecimal(input);
+
+                if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                    showErrorMessage("Amount must be greater than 0!");
+                    continue;
+                }
+
+                if (amount.compareTo(minimumDeposit) < 0) {
+                    showErrorMessage("Amount must be at least " + minimumFormatted + "!");
+                    continue;
+                }
+
+                // For KHR, ensure it's a whole number
+                if ("KHR".equals(currency) && amount.scale() > 0) {
+                    showErrorMessage("KHR amount cannot have decimal places!");
+                    continue;
+                }
+
+                System.out.println("✅ Initial deposit: " + AccountUtil.formatCurrency(amount, currency));
+                return amount;
+
+            } catch (NumberFormatException e) {
+                showErrorMessage("Invalid amount format!");
+            }
+        }
+    }
+
+    /**
+     * Get maturity date for Fixed accounts
+     */
+    private LocalDate getMaturityDate() {
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("           FIXED ACCOUNT TERM");
+        System.out.println("=".repeat(50));
+        System.out.println("Select fixed deposit term:");
+        System.out.println("1. 6 Months");
+        System.out.println("2. 1 Year");
+        System.out.println("3. 2 Years");
+        System.out.println("4. Custom Date");
+        System.out.print("Choose term (1-4): ");
+
+        try {
+            int choice = Integer.parseInt(scanner.nextLine().trim());
+            LocalDate today = LocalDate.now();
+            LocalDate maturityDate;
+
+            switch (choice) {
+                case 1:
+                    maturityDate = today.plusMonths(6);
+                    break;
+                case 2:
+                    maturityDate = today.plusYears(1);
+                    break;
+                case 3:
+                    maturityDate = today.plusYears(2);
+                    break;
+                case 4:
+                    maturityDate = getCustomMaturityDate();
+                    if (maturityDate == null) return null;
+                    break;
+                default:
+                    showErrorMessage("Invalid choice!");
+                    return null;
+            }
+
+            System.out.println("✅ Maturity Date: " + maturityDate.format(DateTimeFormatter.ofPattern("dd MMM yyyy")));
+            System.out.println("⚠️ No withdrawals allowed until maturity date!");
+            return maturityDate;
+
+        } catch (NumberFormatException e) {
+            showErrorMessage("Invalid selection!");
+            return null;
+        }
+    }
+
+    /**
+     * Get custom maturity date
+     */
+    private LocalDate getCustomMaturityDate() {
+        System.out.print("Enter maturity date (YYYY-MM-DD): ");
+        String input = scanner.nextLine().trim();
+
+        try {
+            LocalDate maturityDate = LocalDate.parse(input, DateTimeFormatter.ISO_LOCAL_DATE);
+            LocalDate today = LocalDate.now();
+
+            if (!maturityDate.isAfter(today)) {
+                showErrorMessage("Maturity date must be in the future!");
+                return null;
+            }
+
+            if (maturityDate.isAfter(today.plusYears(10))) {
+                showErrorMessage("Maturity date cannot be more than 10 years from now!");
+                return null;
+            }
+
+            return maturityDate;
+
+        } catch (DateTimeParseException e) {
+            showErrorMessage("Invalid date format! Please use YYYY-MM-DD format.");
+            return null;
+        }
+    }
+
+    /**
+     * Confirm account creation with all details
+     */
+    public boolean confirmAccountCreation(AccountCreationData data) {
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("         CONFIRM ACCOUNT CREATION");
+        System.out.println("=".repeat(50));
+        System.out.println("Account Type    : " + data.getAccountType());
+        System.out.println("Currency        : " + data.getCurrency());
+        System.out.println("Initial Deposit : " +
+                AccountUtil.formatCurrency(data.getInitialDeposit(), data.getCurrency()));
+
+        if (data.getMaturityDate() != null) {
+            System.out.println("Maturity Date   : " +
+                    data.getMaturityDate().format(DateTimeFormatter.ofPattern("dd MMM yyyy")));
+            System.out.println("⚠️ Withdrawals restricted until maturity!");
+        }
+
+        System.out.println("=".repeat(50));
         System.out.print("\nConfirm creation? (y/n): ");
 
         String response = scanner.nextLine().trim().toLowerCase();
@@ -217,14 +372,6 @@ public class AccountView {
 
         System.out.println("=".repeat(50));
         System.out.println("💡 Limits: Saving (1 USD + 1 KHR), Checking (1), Fixed (1)");
-    }
-
-    /**
-     * Get account number input from user
-     */
-    public String getAccountNumberInput() {
-        System.out.print("Enter account number (xxx xxx xxx or xxxxxxxxx): ");
-        return scanner.nextLine().trim();
     }
 
     /**
@@ -302,15 +449,6 @@ public class AccountView {
     }
 
     /**
-     * Clear screen (simple version)
-     */
-    public void clearScreen() {
-        for (int i = 0; i < 50; i++) {
-            System.out.println();
-        }
-    }
-
-    /**
      * Show account creation success
      */
     public void showAccountCreationSuccess(String accountNumber, String accountName) {
@@ -319,8 +457,31 @@ public class AccountView {
         System.out.println("Account Name: " + accountName);
         System.out.println("Account Number: " + accountNumber);
         System.out.println("Status: Active");
-        System.out.println("Balance: $0.00 / ៛0");
         System.out.println("=".repeat(50));
         System.out.println("💡 Your account is now ready for banking operations!");
+    }
+
+    /**
+     * Data class for account creation
+     */
+    public static class AccountCreationData {
+        private final String accountType;
+        private final String currency;
+        private final BigDecimal initialDeposit;
+        private final LocalDate maturityDate;
+
+        public AccountCreationData(String accountType, String currency,
+                                   BigDecimal initialDeposit, LocalDate maturityDate) {
+            this.accountType = accountType;
+            this.currency = currency;
+            this.initialDeposit = initialDeposit;
+            this.maturityDate = maturityDate;
+        }
+
+        // Getters
+        public String getAccountType() { return accountType; }
+        public String getCurrency() { return currency; }
+        public BigDecimal getInitialDeposit() { return initialDeposit; }
+        public LocalDate getMaturityDate() { return maturityDate; }
     }
 }

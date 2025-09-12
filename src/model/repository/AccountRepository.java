@@ -1,4 +1,4 @@
-// model/repository/AccountRepository.java
+// model/repository/AccountRepository.java - Enhanced
 package model.repository;
 
 import database.Database;
@@ -7,6 +7,8 @@ import model.entity.AccountType;
 
 import java.sql.*;
 import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.*;
 
 public class AccountRepository {
@@ -19,13 +21,13 @@ public class AccountRepository {
     // ========== ACCOUNT OPERATIONS ==========
 
     /**
-     * Create a new account
+     * Create a new account with maturity date support
      */
     public boolean createAccount(Account account) {
         String sql = """
             INSERT INTO accounts (customer_id, account_no, account_name, account_currency, 
-                                balance, over_limit, is_freeze, is_deleted, account_type_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                balance, over_limit, is_freeze, is_deleted, account_type_id, maturity_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
         try (Connection connection = database.getConnection();
@@ -40,6 +42,13 @@ public class AccountRepository {
             statement.setBoolean(7, account.isFreeze());
             statement.setBoolean(8, account.isDeleted());
             statement.setInt(9, account.getAccountTypeId());
+
+            // Handle maturity date
+            if (account.getMaturityDate() != null) {
+                statement.setDate(10, Date.valueOf(account.getMaturityDate()));
+            } else {
+                statement.setNull(10, Types.DATE);
+            }
 
             int rowsAffected = statement.executeUpdate();
 
@@ -60,7 +69,7 @@ public class AccountRepository {
     }
 
     /**
-     * Find accounts by customer ID with account type information
+     * Find accounts by customer ID with account type information and maturity date
      */
     public List<Account> findAccountsByCustomerId(Integer customerId) {
         String sql = """
@@ -90,7 +99,7 @@ public class AccountRepository {
     }
 
     /**
-     * Find account by account number
+     * Find account by account number with maturity date
      */
     public Optional<Account> findAccountByAccountNo(String accountNo) {
         String sql = """
@@ -117,7 +126,7 @@ public class AccountRepository {
     }
 
     /**
-     * Find account by ID
+     * Find account by ID with maturity date
      */
     public Optional<Account> findAccountById(Integer id) {
         String sql = """
@@ -213,6 +222,26 @@ public class AccountRepository {
 
         } catch (SQLException e) {
             System.err.println("Error updating account balance: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Update account balance by account ID
+     */
+    public boolean updateBalanceById(Integer accountId, BigDecimal newBalance) {
+        String sql = "UPDATE accounts SET balance = ? WHERE id = ? AND is_deleted = false";
+
+        try (Connection connection = database.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setBigDecimal(1, newBalance);
+            statement.setInt(2, accountId);
+
+            return statement.executeUpdate() > 0;
+
+        } catch (SQLException e) {
+            System.err.println("Error updating account balance by ID: " + e.getMessage());
             return false;
         }
     }
@@ -315,7 +344,7 @@ public class AccountRepository {
     }
 
     /**
-     * Map ResultSet to Account entity
+     * Enhanced map ResultSet to Account entity with maturity date
      */
     private Account mapResultSetToAccount(ResultSet resultSet) throws SQLException {
         Account account = new Account();
@@ -329,6 +358,12 @@ public class AccountRepository {
         account.setFreeze(resultSet.getBoolean("is_freeze"));
         account.setDeleted(resultSet.getBoolean("is_deleted"));
         account.setAccountTypeId(resultSet.getInt("account_type_id"));
+
+        // Handle maturity date
+        Date maturityDate = resultSet.getDate("maturity_date");
+        if (maturityDate != null) {
+            account.setMaturityDate(maturityDate.toLocalDate());
+        }
 
         // Additional fields from joins
         account.setAccountTypeName(resultSet.getString("account_type_name"));
